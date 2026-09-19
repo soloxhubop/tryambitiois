@@ -1,28 +1,141 @@
 -- ============================================================
 -- GUARD DOPPIA ESECUZIONE
--- Se l'hub e' gia' in esecuzione in questa sessione il chunk si ferma qui:
--- niente GUI, niente connessioni, niente thread, niente hook. Non c'e'
--- nulla da ripulire perche' non parte nulla. Il flag vive in _G, quindi
--- si azzera da solo rientrando in partita.
 -- ============================================================
 if _G.AmbitiousRunning then return end
 _G.AmbitiousRunning = true
 
 repeat task.wait() until game:IsLoaded()
-local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
-local Lighting = game:GetService("Lighting")
-local Workspace = game:GetService("Workspace")
-local Stats = game:GetService("Stats")
-local MaterialService = game:GetService("MaterialService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local SoundService = game:GetService("SoundService")
 
-local LP = Players.LocalPlayer
+-- ============================================================
+-- SERVICES
+-- ============================================================
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local RunService       = game:GetService("RunService")
+local HttpService      = game:GetService("HttpService")
+local Lighting         = game:GetService("Lighting")
+local Workspace        = game:GetService("Workspace")
+local Stats            = game:GetService("Stats")
+local MaterialService  = game:GetService("MaterialService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService     = game:GetService("SoundService")
+
+local LP        = Players.LocalPlayer
 local PlayerGui = LP:WaitForChild("PlayerGui")
+
+-- ============================================================
+-- HUB GUI PARENT (gethui / CoreGui fallback)
+-- ============================================================
+local HubGui = PlayerGui
+do
+  local ok, res = pcall(function()
+    if type(gethui) == "function" then return gethui() end
+    if type(get_hidden_gui) == "function" then return get_hidden_gui() end
+    return game:GetService("CoreGui")
+  end)
+  if ok and typeof(res) == "Instance" then HubGui = res end
+end
+_G.AmbitiousGuiParent = HubGui
+
+-- ============================================================
+-- PULIZIA GUI VECCHIE
+-- ============================================================
+local GUI_NAME = "VerticalMenuGui"
+local existingGui = PlayerGui:FindFirstChild(GUI_NAME)
+if existingGui then existingGui:Destroy() end
+
+for _, name in ipairs({"AmbitiousHub", "AmbitiousHub", "AmbitiousHub"}) do
+  local old = HubGui:FindFirstChild(name)
+  if old then old:Destroy() end
+  old = PlayerGui:FindFirstChild(name)
+  if old then old:Destroy() end
+end
+
+-- ============================================================
+-- CREAZIONE GUI (SFONDO + TITOLO + DRAG)
+-- ============================================================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = GUI_NAME
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = PlayerGui
+
+local mainFrame = Instance.new("ImageLabel")
+mainFrame.Name = "MainFrame"
+mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+mainFrame.Size = UDim2.new(0, 360, 0, 640)
+mainFrame.BackgroundColor3 = Color3.fromRGB(23, 23, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Image = "rbxassetid://85471050952001"
+mainFrame.ScaleType = Enum.ScaleType.Crop
+mainFrame.Active = true
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 20)
+mainCorner.Parent = mainFrame
+
+local aspectRatio = Instance.new("UIAspectRatioConstraint")
+aspectRatio.AspectRatio = 0.5625
+aspectRatio.AspectType = Enum.AspectType.FitWithinMaxSize
+aspectRatio.DominantAxis = Enum.DominantAxis.Height
+aspectRatio.Parent = mainFrame
+
+local mainTitle = Instance.new("ImageLabel")
+mainTitle.Name = "MainTitle"
+mainTitle.AnchorPoint = Vector2.new(0.5, 0)
+mainTitle.Position = UDim2.new(0.49, 0, 0, -170)
+mainTitle.Size = UDim2.new(0.8, 0, 0.7, 0)
+mainTitle.BackgroundTransparency = 1
+mainTitle.Image = "rbxassetid://132599537037812"
+mainTitle.ScaleType = Enum.ScaleType.Fit
+mainTitle.Parent = mainFrame
+
+-- Drag logic
+local dragging = false
+local dragInput
+local dragStart
+local startPos
+
+local function update(input)
+    local delta = input.Position - dragStart
+    mainFrame.Position = UDim2.new(
+        startPos.X.Scale, startPos.X.Offset + delta.X,
+        startPos.Y.Scale, startPos.Y.Offset + delta.Y
+    )
+end
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+mainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then update(input) end
+end)
+
+-- ============================================================
+-- TUTTA LA LOGICA ORIGINALE (da riga 26 in poi del file originale,
+-- saltando la ridichiarazione di services/guard già fatta sopra)
+-- ============================================================
 -- ============================================================
 -- CONTENITORE GUI DELL'HUB
 -- gethui() restituisce un contenitore protetto (di solito dentro CoreGui),
